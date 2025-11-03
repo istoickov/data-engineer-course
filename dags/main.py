@@ -1,14 +1,10 @@
-import sys
 import os
+import sys
+import pendulum
+
 from pathlib import Path
 
-# Add dags directory to Python path for imports
-dags_folder = Path(__file__).parent
-if str(dags_folder) not in sys.path:
-    sys.path.insert(0, str(dags_folder))
-
 from airflow import DAG
-import pendulum
 
 from datetime import datetime, timedelta
 from api.video_stats import (
@@ -17,6 +13,12 @@ from api.video_stats import (
     get_videos_from_playlist,
     get_video_details,
 )
+from datawarehouse.dwh import staging_table, core_table
+
+# Add dags directory to Python path for imports
+dags_folder = Path(__file__).parent
+if str(dags_folder) not in sys.path:
+    sys.path.insert(0, str(dags_folder))
 
 
 local_tz = pendulum.timezone("Europe/Skopje")
@@ -55,3 +57,17 @@ with DAG(
     # Fetch video details in batches
     # Task dependencies are automatically handled by TaskFlow API
     video_details_task = get_video_details(video_ids_task)
+
+with DAG(
+    dag_id="update_db",
+    default_args=default_args,
+    description="Update the database with YouTube video statistics",
+    schedule="0 15 * * *",
+    catchup=False,
+    tags=["youtube", "video_stats"],
+) as dag:
+    # Create staging table and insert data
+    staging_table_task = staging_table()
+
+    # Create the core table and insert data
+    core_table_task = core_table()
